@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AIoT Smart Neonatal Monitoring | NeoCare AI</title>
+    <meta
+      name="description"
+      content="A soft pink, professional neonatal sepsis prediction dashboard powered by CatBoost, charts, and live analytics."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/frontend/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <a class="brand" href="#home">
+          <img class="brand-logo" src="/frontend/logo.svg" alt="NeoCare AI logo" />
+          <span class="brand-copy">
+            <strong>NeoCare AI</strong>
+            <small>Neonatal Sepsis Intelligence</small>
+          </span>
+        </a>
+        <nav>
+          <a href="/dashboard">Dashboard</a>
+          <a href="/predict">Predict</a>
+          <a href="/insights">Insights</a>
+          <a href="/performance">Performance</a>
+          <a href="/dataset">Dataset</a>
+          <a href="/history">History</a>
+          <a href="/stack">Stack</a>
+          <a href="/about">About Project</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section id="home" class="hero-shell">
+        <div class="hero-copy card soft-card">
+          <p class="eyebrow">AI-powered neonatal care</p>
+          <h1>AIoT-Based Smart Neonatal Monitoring for Early Sepsis Prediction.</h1>
+          <p class="subtitle">
+            Enter vitals + APGAR score to get instant CatBoost predictions, while the Generative-AI-style
+            guidance panel summarizes risk and suggests next-step actions.
+          </p>
+
+          <div class="hero-actions">
+            <a class="primary-link" href="#predict">Start Prediction</a>
+            <a class="secondary-link" href="#performance">View Model Metrics</a>
+          </div>
+
+          <div class="hero-stats">
+            <div class="stat-card">
+              <span id="totalPredictions" class="stat-value">0</span>
+              <span class="stat-label">Predictions Logged</span>
+            </div>
+            <div class="stat-card">
+              <span id="highCount" class="stat-value risk-high">0</span>
+              <span class="stat-label">High Risk Cases</span>
+            </div>
+            <div class="stat-card">
+              <span id="lowCount" class="stat-value risk-low">0</span>
+              <span class="stat-label">Low Risk Cases</span>
+            </div>
+          </div>
+
+          <p id="statusText" class="status-pill">Checking backend status...</p>
+        </div>
+
+        <aside class="hero-aside card soft-card">
+          <div class="aside-panel">
+            <p class="aside-label">Model Snapshot</p>
+            <h2 id="accuracyText">Loading model performance...</h2>
+            <p class="muted">Accuracy, precision, recall, F1, and ROC-AUC are pulled directly from the trained model.</p>
+          </div>
+
+          <div class="mini-metrics">
+            <div class="mini-metric">
+              <span class="mini-title">Precision</span>
+              <strong id="precisionValue">-</strong>
+            </div>
+            <div class="mini-metric">
+              <span class="mini-title">Recall</span>
+              <strong id="recallValue">-</strong>
+            </div>
+            <div class="mini-metric">
+              <span class="mini-title">F1</span>
+              <strong id="f1Value">-</strong>
+            </div>
+            <div class="mini-metric">
+              <span class="mini-title">ROC-AUC</span>
+              <strong id="rocAucValue">-</strong>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section id="predict" class="section-grid">
+        <div class="card soft-card form-card">
+          <div class="section-heading">
+            <p class="eyebrow">Prediction console</p>
+            <h2>Sepsis Risk Input</h2>
+            <p>Use realistic newborn vitals or load a sample preset to get a prediction in seconds.</p>
+          </div>
+
+          <form id="predictionForm" class="prediction-form">
+            <div class="form-grid">
+              <label>
+                Apgar Score
+                <input type="number" id="Apgar" step="0.1" min="0" max="10" placeholder="7.0" required />
+              </label>
+              <label>
+                Heart Rate (bpm)
+                <input type="number" id="HeartRate" step="0.1" min="60" max="220" placeholder="140" required />
+              </label>
+              <label>
+                Temperature (°C)
+                <input type="number" id="Temperature" step="0.1" min="30" max="43" placeholder="36.8" required />
+              </label>
+              <label>
+                Respiratory Rate (/min)
+                <input type="number" id="RespRate" step="0.1" min="10" max="120" placeholder="42" required />
+              </label>
+              <label>
+                Oxygen Level (%)
+                <input type="number" id="OxygenLevel" step="0.1" min="40" max="100" placeholder="98" required />
+              </label>
+            </div>
+
+            <div class="action-row">
+              <button type="submit" id="predictBtn" class="primary-btn">Predict</button>
+              <button type="button" id="sampleLowBtn" class="secondary-btn">Low-risk sample</button>
+              <button type="button" id="sampleHighBtn" class="secondary-btn">High-risk sample</button>
+            </div>
+
+            <div id="spinner" class="spinner hidden" aria-label="Loading"></div>
+          </form>
+        </div>
+
+        <div class="card soft-card result-card">
+          <div class="section-heading compact">
+            <p class="eyebrow">Risk interpretation</p>
+            <h2>Prediction Result</h2>
+          </div>
+          <div class="result-display">
+            <p id="resultText" class="result-text">Enter values and press Predict.</p>
+            <div class="probability-meter">
+              <div id="probabilityBar" class="probability-bar"></div>
+            </div>
+            <p id="probabilityText" class="muted">Probability will appear here.</p>
+
+            <div class="iot-readings" aria-label="AIoT vital readings">
+              <div class="iot-item">
+                <span class="iot-label">Apgar</span>
+                <strong id="vitalApgar">-</strong>
+              </div>
+              <div class="iot-item">
+                <span class="iot-label">Heart Rate</span>
+                <strong id="vitalHeartRate">-</strong>
+              </div>
+              <div class="iot-item">
+                <span class="iot-label">Temperature</span>
+                <strong id="vitalTemperature">-</strong>
+              </div>
+              <div class="iot-item">
+                <span class="iot-label">Resp Rate</span>
+                <strong id="vitalRespRate">-</strong>
+              </div>
+              <div class="iot-item">
+                <span class="iot-label">Oxygen</span>
+                <strong id="vitalOxygen">-</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert-panel">
+            <span class="alert-chip">Generative AI Clinical Guidance</span>
+            <p id="alertText" class="alert-text">Guidance will appear after prediction.</p>
+            <p class="muted" style="margin: 10px 0 0; font-size: 0.86rem;">
+              Educational demo only. Not for real clinical diagnosis.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="insights" class="card soft-card insights-card">
+        <div class="section-heading compact">
+          <p class="eyebrow">Real-time insights</p>
+          <h2>Trend Intelligence</h2>
+          <p>Track recent prediction balance and sepsis probability drift over time.</p>
+        </div>
+
+        <div class="chart-grid">
+          <div class="chart-card">
+            <h3>Prediction Distribution</h3>
+            <canvas id="typeChart" height="180"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Recent Probability Trend</h3>
+            <canvas id="trendChart" height="180"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section id="performance" class="section-grid">
+        <div class="card soft-card">
+          <div class="section-heading compact">
+            <p class="eyebrow">Model performance</p>
+            <h2>Evaluation Overview</h2>
+            <p>Visual summary of the CatBoost model on the test split.</p>
+          </div>
+          <canvas id="accuracyChart" height="120"></canvas>
+          <div class="image-grid">
+            <figure>
+              <img id="cmImage" alt="Confusion Matrix" />
+              <figcaption>Confusion matrix</figcaption>
+            </figure>
+            <figure>
+              <img id="rocImage" alt="ROC Curve" />
+              <figcaption>ROC curve</figcaption>
+            </figure>
+          </div>
+
+          <div class="table-wrap eval-table-wrap" style="margin-top: 18px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Actual \\ Predicted</th>
+                  <th>Low Risk</th>
+                  <th>High Risk</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Low Risk</td>
+                  <td id="cmTN">-</td>
+                  <td id="cmFP">-</td>
+                </tr>
+                <tr>
+                  <td>High Risk</td>
+                  <td id="cmFN">-</td>
+                  <td id="cmTP">-</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card soft-card">
+          <div class="section-heading compact">
+            <p class="eyebrow">Dataset analytics</p>
+            <h2>Training Data Profile</h2>
+            <p id="datasetCountText" class="muted">Loading dataset summary...</p>
+          </div>
+          <div class="chart-grid compact-grid">
+            <div class="chart-card small">
+              <h3>Output Distribution</h3>
+              <canvas id="datasetOutputChart" height="170"></canvas>
+            </div>
+            <div class="chart-card small">
+              <h3>Apgar Distribution</h3>
+              <canvas id="apgarHistChart" height="170"></canvas>
+            </div>
+            <div class="chart-card small">
+              <h3>Heart Rate Distribution</h3>
+              <canvas id="heartRateHistChart" height="170"></canvas>
+            </div>
+            <div class="chart-card small">
+              <h3>Temperature Distribution</h3>
+              <canvas id="temperatureHistChart" height="170"></canvas>
+            </div>
+            <div class="chart-card small">
+              <h3>Respiratory Rate Distribution</h3>
+              <canvas id="respRateHistChart" height="170"></canvas>
+            </div>
+            <div class="chart-card small">
+              <h3>Oxygen Level Distribution</h3>
+              <canvas id="oxygenHistChart" height="170"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="history" class="card soft-card">
+        <div class="section-heading compact">
+          <p class="eyebrow">Recent activity</p>
+          <h2>Prediction History</h2>
+          <p>Latest saved predictions from this deployment.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time (UTC)</th>
+                <th>Apgar</th>
+                <th>Heart Rate</th>
+                <th>Temp</th>
+                <th>Resp Rate</th>
+                <th>Oxygen</th>
+                <th>Result</th>
+                <th>Probability</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card soft-card about-grid">
+        <div>
+          <p class="eyebrow">Why this site works</p>
+          <h2>Professional demo experience</h2>
+          <p>
+            This interface combines a polished healthcare-inspired design, responsive layout, live model
+            metrics, charting, and historical predictions into one review-ready website.
+          </p>
+        </div>
+        <div>
+          <p class="eyebrow">Stack</p>
+          <h2>Built for local execution</h2>
+          <p><strong>Backend:</strong> Flask + CatBoost</p>
+          <p><strong>Frontend:</strong> HTML, CSS, JavaScript, Chart.js</p>
+          <p><strong>Theme:</strong> Soft pink clinical dashboard</p>
+        </div>
+      </section>
+    </main>
+
+    <script src="/frontend/script.js"></script>
+  </body>
+</html>

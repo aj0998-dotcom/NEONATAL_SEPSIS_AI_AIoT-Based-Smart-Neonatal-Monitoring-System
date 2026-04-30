@@ -1,0 +1,30 @@
+## Python
+__pycache__/
+*.py[cod]
+*.pyd
+.Python
+venv/
+.venv/
+env/
+.env/
+.env.*
+.pytest_cache/
+
+## Node / frontend
+node_modules/
+dist/
+.vite/
+
+## OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+## Project artifacts / data
+backend/model.cbm
+backend/metrics.json
+backend/plots/
+backend/predictions.db
+backend/catboost_info/
+backend/dataset.csv
