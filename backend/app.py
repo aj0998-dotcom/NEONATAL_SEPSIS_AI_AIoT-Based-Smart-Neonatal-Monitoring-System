@@ -39,7 +39,10 @@ def _metrics_need_refresh() -> bool:
         metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
     except Exception:
         return True
-    return not isinstance(metrics, dict) or "confusion_matrix_counts" not in metrics
+    if not isinstance(metrics, dict) or "confusion_matrix_counts" not in metrics:
+        return True
+    # Refresh if new evaluation fields are missing.
+    return "cv_f1_macro_mean" not in metrics or "f1_weighted" not in metrics
 
 
 metrics_need_refresh = _metrics_need_refresh()
@@ -214,6 +217,12 @@ def metrics():
         data["confusion_matrix_url"] = f"/{data['confusion_matrix_image']}"
     if data.get("roc_curve_image"):
         data["roc_curve_url"] = f"/{data['roc_curve_image']}"
+    if data.get("feature_importance_image"):
+        data["feature_importance_url"] = f"/{data['feature_importance_image']}"
+    if data.get("cv_accuracy_comparison_image"):
+        data["cv_accuracy_comparison_url"] = f"/{data['cv_accuracy_comparison_image']}"
+    if data.get("performance_overview_image"):
+        data["performance_overview_url"] = f"/{data['performance_overview_image']}"
     return jsonify(data)
 
 

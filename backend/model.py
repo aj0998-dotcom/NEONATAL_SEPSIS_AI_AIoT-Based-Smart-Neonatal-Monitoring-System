@@ -13,7 +13,9 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedKFold, cross_validate, train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -105,6 +107,111 @@ def train_and_save_model() -> dict:
     X = df[feature_cols]
     y = df["Output"]
 
+    # Cross-validation (report generalization stability).
+    cv_results = None
+    try:
+        cv_model = CatBoostClassifier(
+            iterations=200,
+            learning_rate=0.08,
+            depth=6,
+            loss_function="MultiClass",
+            eval_metric="Accuracy",
+            verbose=False,
+            random_seed=42,
+        )
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        cv_results = cross_validate(
+            cv_model,
+            X,
+            y,
+            cv=cv,
+            scoring={"accuracy": "accuracy", "f1_macro": "f1_macro", "f1_weighted": "f1_weighted"},
+            n_jobs=None,
+            return_train_score=False,
+        )
+    except Exception:
+        cv_results = None
+
+    # Cross-validation accuracy comparison across multiple models (Fig/table).
+    cv_model_comparison: list[dict] = []
+    cv_model_comparison_error: str | None = None
+    cv_accuracy_comparison_image: str | None = None
+    try:
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+        models = [
+            (
+                "LogisticRegression",
+                LogisticRegression(
+                    max_iter=2000,
+                    solver="lbfgs",
+                ),
+            ),
+            (
+                "RandomForest",
+                RandomForestClassifier(
+                    n_estimators=400,
+                    random_state=42,
+                    n_jobs=-1,
+                ),
+            ),
+            (
+                "CatBoost",
+                CatBoostClassifier(
+                    iterations=200,
+                    learning_rate=0.08,
+                    depth=6,
+                    loss_function="MultiClass",
+                    eval_metric="Accuracy",
+                    verbose=False,
+                    random_seed=42,
+                ),
+            ),
+        ]
+
+        for name, estimator in models:
+            scores = cross_validate(
+                estimator,
+                X,
+                y,
+                cv=cv,
+                scoring={"accuracy": "accuracy", "f1_macro": "f1_macro"},
+                n_jobs=None,
+                return_train_score=False,
+            )
+            cv_model_comparison.append(
+                {
+                    "model": name,
+                    "cv_folds": 5,
+                    "accuracy_mean": round(float(np.mean(scores["test_accuracy"])), 4),
+                    "accuracy_std": round(float(np.std(scores["test_accuracy"])), 4),
+                    "f1_macro_mean": round(float(np.mean(scores["test_f1_macro"])), 4),
+                    "f1_macro_std": round(float(np.std(scores["test_f1_macro"])), 4),
+                }
+            )
+        cv_model_comparison.sort(key=lambda x: x["accuracy_mean"], reverse=True)
+
+        # Plot CV accuracy comparison (Fig/table visual).
+        names = [r["model"] for r in cv_model_comparison]
+        means = [r["accuracy_mean"] for r in cv_model_comparison]
+        stds = [r["accuracy_std"] for r in cv_model_comparison]
+        plt.figure(figsize=(7.5, 4.5))
+        x = np.arange(len(names))
+        plt.bar(x, means, yerr=stds, capsize=6, color="#16a34a", alpha=0.9)
+        plt.xticks(x, names, rotation=15, ha="right")
+        plt.ylim(0.0, 1.0)
+        plt.ylabel("Cross-Validation Accuracy")
+        plt.title("Cross-Validation Accuracy Comparison Across Models (5-Fold)")
+        plt.tight_layout()
+        cv_img_path = PLOTS_DIR / "cv_accuracy_comparison.png"
+        plt.savefig(cv_img_path, dpi=150)
+        plt.close()
+        cv_accuracy_comparison_image = "plots/cv_accuracy_comparison.png"
+    except Exception as exc:
+        cv_model_comparison = []
+        cv_model_comparison_error = str(exc)
+        cv_accuracy_comparison_image = None
+
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
@@ -126,6 +233,33 @@ def train_and_save_model() -> dict:
     precision = precision_score(y_test, y_pred, average="macro", zero_division=0)
     recall = recall_score(y_test, y_pred, average="macro", zero_division=0)
     f1 = f1_score(y_test, y_pred, average="macro", zero_division=0)
+    f1_weighted = f1_score(y_test, y_pred, average="weighted", zero_division=0)
+
+    # Feature importance (CatBoost) bar chart (Fig 6.4).
+    feature_importance = None
+    feature_importance_image = None
+    try:
+        importances = np.asarray(model.get_feature_importance(), dtype=float).ravel()
+        feature_importance = [
+            {"feature": feature_cols[i], "importance": round(float(importances[i]), 6)}
+            for i in range(min(len(feature_cols), len(importances)))
+        ]
+        feature_importance.sort(key=lambda x: x["importance"], reverse=True)
+
+        labels = [x["feature"] for x in feature_importance]
+        values = [x["importance"] for x in feature_importance]
+        plt.figure(figsize=(7.5, 4.5))
+        plt.barh(labels[::-1], values[::-1], color="#2563eb")
+        plt.title("CatBoost Feature Importance")
+        plt.xlabel("Importance")
+        plt.tight_layout()
+        fi_path = PLOTS_DIR / "feature_importance.png"
+        plt.savefig(fi_path, dpi=150)
+        plt.close()
+        feature_importance_image = "plots/feature_importance.png"
+    except Exception:
+        feature_importance = None
+        feature_importance_image = None
 
     # Confusion Matrix plot
     labels = ["NEG", "EOS", "LOS"]
@@ -145,11 +279,116 @@ def train_and_save_model() -> dict:
         "matrix": cm.astype(int).tolist(),
     }
 
+    # Composite "all performance" figure for reports/slides.
+    performance_overview_image = None
+    try:
+        fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+
+        # (1) Confusion matrix heatmap
+        ax = axes[0, 0]
+        im = ax.imshow(cm.astype(float), cmap="Blues")
+        ax.set_title("Confusion Matrix")
+        ax.set_xticks(range(len(labels)), labels)
+        ax.set_yticks(range(len(labels)), labels)
+        ax.set_xlabel("Predicted")
+        ax.set_ylabel("Actual")
+        for i in range(len(labels)):
+            for j in range(len(labels)):
+                ax.text(j, i, int(cm[i, j]), ha="center", va="center", color="#111827", fontsize=10)
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+        # (2) Feature importance
+        ax = axes[0, 1]
+        if feature_importance:
+            fi_labels = [x["feature"] for x in feature_importance]
+            fi_values = [x["importance"] for x in feature_importance]
+            ax.barh(fi_labels[::-1], fi_values[::-1], color="#2563eb")
+            ax.set_title("CatBoost Feature Importance")
+            ax.set_xlabel("Importance")
+        else:
+            ax.axis("off")
+            ax.text(0.5, 0.5, "Feature importance not available", ha="center", va="center")
+
+        # (3) CV model comparison
+        ax = axes[1, 0]
+        if cv_model_comparison:
+            names = [r["model"] for r in cv_model_comparison]
+            means = [r["accuracy_mean"] for r in cv_model_comparison]
+            stds = [r["accuracy_std"] for r in cv_model_comparison]
+            x = np.arange(len(names))
+            ax.bar(x, means, yerr=stds, capsize=6, color="#16a34a", alpha=0.9)
+            ax.set_xticks(x, names, rotation=15, ha="right")
+            ax.set_ylim(0.0, 1.0)
+            ax.set_ylabel("CV Accuracy")
+            ax.set_title("CV Accuracy Comparison (5-Fold)")
+        else:
+            ax.axis("off")
+            ax.text(0.5, 0.5, "CV comparison not available", ha="center", va="center")
+
+        # (4) Key metrics text
+        ax = axes[1, 1]
+        ax.axis("off")
+        summary_lines = [
+            f"Holdout Accuracy: {accuracy:.4f}",
+            f"Precision (macro): {precision:.4f}",
+            f"Recall (macro): {recall:.4f}",
+            f"F1 (macro): {f1:.4f}",
+            f"F1 (weighted): {f1_weighted:.4f}",
+        ]
+        if cv_results is not None:
+            summary_lines += [
+                f"CV Accuracy (mean±std): {np.mean(cv_results['test_accuracy']):.4f} ± {np.std(cv_results['test_accuracy']):.4f}",
+                f"CV F1 Macro (mean±std): {np.mean(cv_results['test_f1_macro']):.4f} ± {np.std(cv_results['test_f1_macro']):.4f}",
+            ]
+        ax.text(
+            0.02,
+            0.98,
+            "Model Performance Summary\n\n" + "\n".join(summary_lines),
+            ha="left",
+            va="top",
+            fontsize=11,
+            color="#111827",
+        )
+
+        plt.tight_layout()
+        overview_path = PLOTS_DIR / "performance_overview.png"
+        fig.savefig(overview_path, dpi=150)
+        plt.close(fig)
+        performance_overview_image = "plots/performance_overview.png"
+    except Exception:
+        performance_overview_image = None
+
     metrics = {
         "accuracy": round(float(accuracy), 4),
         "precision": round(float(precision), 4),
         "recall": round(float(recall), 4),
         "f1_score": round(float(f1), 4),
+        "f1_weighted": round(float(f1_weighted), 4),
+        "cv_folds": 5,
+        "cv_accuracy_mean": (
+            round(float(np.mean(cv_results["test_accuracy"])), 4) if cv_results else None
+        ),
+        "cv_accuracy_std": (
+            round(float(np.std(cv_results["test_accuracy"])), 4) if cv_results else None
+        ),
+        "cv_f1_macro_mean": (
+            round(float(np.mean(cv_results["test_f1_macro"])), 4) if cv_results else None
+        ),
+        "cv_f1_macro_std": (
+            round(float(np.std(cv_results["test_f1_macro"])), 4) if cv_results else None
+        ),
+        "cv_f1_weighted_mean": (
+            round(float(np.mean(cv_results["test_f1_weighted"])), 4) if cv_results else None
+        ),
+        "cv_f1_weighted_std": (
+            round(float(np.std(cv_results["test_f1_weighted"])), 4) if cv_results else None
+        ),
+        "cv_accuracy_comparison": cv_model_comparison,
+        "cv_accuracy_comparison_error": cv_model_comparison_error,
+        "cv_accuracy_comparison_image": cv_accuracy_comparison_image,
+        "feature_importance": feature_importance,
+        "feature_importance_image": feature_importance_image,
+        "performance_overview_image": performance_overview_image,
         "roc_auc": None,
         "confusion_matrix_counts": confusion_matrix_counts,
         "confusion_matrix_image": "plots/confusion_matrix.png",
